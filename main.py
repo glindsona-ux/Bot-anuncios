@@ -14,7 +14,7 @@ def home():
     return "Bot online!"
 
 def run_flask():
-    port = int(os.getenv("PORT", 10000)) # Render usa PORT 10000
+    port = int(os.getenv("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
@@ -111,7 +111,7 @@ class PainelAnuncio(disnake.ui.View):
         msg = await canal.send(embed=embed)
 
         db[str(inter.guild.id)]["temp"] = {}
-        db[str(inter.guild.id)]["ultimo_post"] = asyncio.get_event_loop().time()
+        db[str(inter.guild.id)]["ultimo_post"] = asyncio.get_running_loop().time()
         db[str(inter.guild.id)]["ultimo_post_msg"] = msg.id
         save_db(db)
 
@@ -148,7 +148,7 @@ class PainelAnuncio(disnake.ui.View):
 
         db[guild_id]["intervalo"] = temp["tempo"]
         db[guild_id]["intervalo_nome"] = temp["tempo_nome"]
-        db[guild_id]["ultimo_post"] = asyncio.get_event_loop().time()
+        db[guild_id]["ultimo_post"] = asyncio.get_running_loop().time()
 
         save_db(db)
 
@@ -230,7 +230,7 @@ async def renovar_painel():
         if "intervalo" not in data or "canal_anuncio" not in data or "ultimo_post" not in data:
             continue
 
-        agora = asyncio.get_event_loop().time()
+        agora = asyncio.get_running_loop().time()
         if agora - data["ultimo_post"] >= data["intervalo"]:
             guild = bot.get_guild(int(guild_id))
             if not guild:
