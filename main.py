@@ -3,14 +3,32 @@ from disnake.ext import commands, tasks
 import json
 import os
 import asyncio
+import threading
+from flask import Flask
 
-TOKEN = os.getenv("TOKEN")
+# --- Flask keepalive pra Render não dormir ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot online!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = threading.Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+
+# --- Bot config ---
+TOKEN = os.getenv("TOKEN") # Usa variável de ambiente no Render
 
 intents = disnake.Intents.default()
 intents.guilds = True
 intents.members = True
 
-bot = commands.InteractionBot(intents=intents) # Mudou aqui
+bot = commands.InteractionBot(intents=intents)
 DB_FILE = "anuncios.json"
 
 def load_db():
@@ -257,4 +275,6 @@ async def on_ready():
     if not renovar_painel.is_running():
         renovar_painel.start()
 
-bot.run(TOKEN)
+if __name__ == "__main__":
+    keep_alive() # Inicia o servidor Flask
+    bot.run(TOKEN)
