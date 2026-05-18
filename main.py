@@ -14,7 +14,8 @@ def home():
     return "Bot online!"
 
 def run_flask():
-    app.run(host='0.0.0.0', port=8080)
+    port = int(os.getenv("PORT", 10000)) # Render usa PORT 10000
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = threading.Thread(target=run_flask)
@@ -22,7 +23,7 @@ def keep_alive():
     t.start()
 
 # --- Bot config ---
-TOKEN = os.getenv("TOKEN") # Usa variável de ambiente no Render
+TOKEN = os.getenv("TOKEN")
 
 intents = disnake.Intents.default()
 intents.guilds = True
@@ -276,5 +277,5 @@ async def on_ready():
         renovar_painel.start()
 
 if __name__ == "__main__":
-    keep_alive() # Inicia o servidor Flask
+    keep_alive()
     bot.run(TOKEN)
