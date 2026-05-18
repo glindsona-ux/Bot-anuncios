@@ -1,2 +1,3 @@
 disnake==2.9.2
 flask
+audioop-lts
