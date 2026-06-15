@@ -3,4 +3,3 @@ flask==3.0.3
 aiohttp==3.9.5
 waitress==3.0.2
 python-dotenv==1.0.0
-audioop-lts==0.2.1
