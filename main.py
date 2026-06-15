@@ -1,11 +1,13 @@
 import os
 import disnake
-import time # <-- ADICIONA ISSO
+import time
+import nest_asyncio
 from disnake.ext import commands, tasks
 from flask import Flask
 from threading import Thread
-import asyncio
 import aiohttp
+
+nest_asyncio.apply() # FIX pro loop do asyncio no Render
 
 # Flask pra manter vivo no Render
 app = Flask('')
@@ -16,7 +18,7 @@ def home():
 
 def run_flask():
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port, threaded=True) # threaded=True ajuda
+    app.run(host='0.0.0.0', port=port, threaded=True)
 
 # Bot
 intents = disnake.Intents.default()
@@ -31,7 +33,7 @@ async def baixar_imagem(url):
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
             if resp.status == 200:
-                return url # Discord já hospeda, só usar URL
+                return url
     return None
 
 class PainelAnunciosView(disnake.ui.View):
@@ -88,7 +90,6 @@ class PainelAnunciosView(disnake.ui.View):
         canal = bot.get_channel(data['canal'])
         cor = int(data.get('cor', '2b2d31'), 16)
 
-        # Apaga msg antiga se existir
         if data.get('msg_id'):
             try:
                 msg_antiga = await canal.fetch_message(data['msg_id'])
@@ -185,8 +186,9 @@ class AnuncioModal(disnake.ui.Modal):
         super().__init__(title=f"Preencher: {nome}", components=components)
 
     async def callback(self, inter):
-        anuncio_data[self.guild.id][self.nome]['titulo'] = inter.text_values['titulo']
-        anuncio_data[self.guild.id][self.nome]['desc'] = inter.text_values['desc']
+        # FIX: era self.guild.id, agora self.guild_id
+        anuncio_data[self.guild_id][self.nome]['titulo'] = inter.text_values['titulo']
+        anuncio_data[self.guild_id][self.nome]['desc'] = inter.text_values['desc']
         await inter.response.send_message(f"Anúncio '{self.nome}' preenchido ✅", ephemeral=True)
 
 class ImagemModal(disnake.ui.Modal):
@@ -211,7 +213,6 @@ class ImagemModal(disnake.ui.Modal):
     async def callback(self, inter):
         url = inter.text_values['url_img']
 
-        # Se anexou imagem na mensagem do modal
         if inter.message and inter.message.attachments:
             url = inter.message.attachments[0].url
 
@@ -226,17 +227,15 @@ class ImagemModal(disnake.ui.Modal):
 async def on_ready():
     print(f'✅ Bot online como {bot.user}')
 
-    # PRA TESTE: cola ID de vários servidores aqui
     GUILD_IDS = [
-        1511910291825492090, # Server 1 - teu principal
-        1509287732063637646, # Server 2 - do amigo
+        1511910291825492090,
+        1509287732063637646,
         1465329771696361546,
-        1512223172554919997 # Server 3 - server teste
+        1512223172554919997
     ]
     await bot.sync_commands(guild_ids=GUILD_IDS)
     print(f"Comandos sincronizados em {len(GUILD_IDS)} servidores")
 
-    # Registra views pra não morrer no restart
     for guild_id, anuncios in anuncio_data.items():
         for nome in anuncios.keys():
             bot.add_view(PainelAnunciosView(guild_id, nome))
@@ -295,7 +294,6 @@ if __name__ == "__main__":
     port = int(os.environ.get('PORT', 8080))
     Thread(target=run_flask, daemon=True).start()
 
-    # Dá 3 seg pro Flask bindar a porta antes do bot conectar
     time.sleep(3)
     print(f"Flask rodando na porta {port}")
 
@@ -303,4 +301,4 @@ if __name__ == "__main__":
     if not token:
         print("ERRO: DISCORD_TOKEN não encontrado nas variáveis de ambiente!")
     else:
-        asyncio.run(bot.start(token))
+        bot.run(token) # FIX: usa run() em vez de asyncio.run()
