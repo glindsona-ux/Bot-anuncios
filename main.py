@@ -4,13 +4,14 @@ from disnake.ext import commands, tasks
 from flask import Flask
 from threading import Thread
 import asyncio
+import aiohttp
 
 # Flask pra manter vivo no Render
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot de anúncios online"
+    return "Bot de anúncios online v3.1"
 
 def run_flask():
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
@@ -20,8 +21,16 @@ intents = disnake.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Guarda dados: {guild_id: {nome_anuncio: {canal, cor, titulo, desc, imagem, msg_id, task}}}
+# Guarda dados: {guild_id: {nome_anuncio: {canal, cor, titulo, desc, imagem, msg_id, task, tempo}}}
 anuncio_data = {}
+
+async def baixar_imagem(url):
+    """Baixa imagem do Discord/CDN e retorna URL pro embed"""
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                return url # Discord já hospeda, só usar URL
+    return None
 
 class PainelAnunciosView(disnake.ui.View):
     def __init__(self, guild_id, nome):
@@ -87,12 +96,12 @@ class PainelAnunciosView(disnake.ui.View):
 
         embed = disnake.Embed(
             title=f"📢 {data['titulo']}",
-            description=f"{data['desc']}\n\n`Anúncio: {self.nome} | Servidor ID: {inter.guild.id}`",
+            description=data['desc'],
             color=cor
         )
         if data.get('imagem'):
             embed.set_image(url=data['imagem'])
-        embed.set_footer(text="Bot de Anúncios FFZ | v3.1 Painel", icon_url=bot.user.avatar.url)
+        embed.set_footer(text=f"Anúncio: {self.nome} | Bot FFZ v3.1", icon_url=bot.user.avatar.url)
 
         msg = await canal.send(embed=embed)
         data['msg_id'] = msg.id
@@ -128,7 +137,7 @@ class PainelAnunciosView(disnake.ui.View):
 
             embed = disnake.Embed(
                 title=f"📢 {data['titulo']}",
-                description=f"{data['desc']}\n\n`Anúncio: {nome} | Servidor ID: {guild_id}`",
+                description=data['desc'],
                 color=cor
             )
             if data.get('imagem'):
@@ -165,7 +174,7 @@ class AnuncioModal(disnake.ui.Modal):
         if guild_id not in anuncio_data:
             anuncio_data[guild_id] = {}
         if nome not in anuncio_data[guild_id]:
-            anuncio_data[guild_id][nome] = {'canal': None, 'cor': '2b2d31', 'task': None, 'msg_id': None, 'imagem': None}
+            anuncio_data[guild_id][nome] = {'canal': None, 'cor': '2b2d31', 'task': None, 'msg_id': None, 'imagem': None, 'tempo': None}
 
         components = [
             disnake.ui.TextInput(label="Título", custom_id="titulo", max_length=256, required=True),
@@ -185,11 +194,11 @@ class ImagemModal(disnake.ui.Modal):
         if guild_id not in anuncio_data:
             anuncio_data[guild_id] = {}
         if nome not in anuncio_data[guild_id]:
-            anuncio_data[guild_id][nome] = {'canal': None, 'cor': '2b2d31', 'task': None, 'msg_id': None, 'imagem': None}
+            anuncio_data[guild_id][nome] = {'canal': None, 'cor': '2b2d31', 'task': None, 'msg_id': None, 'imagem': None, 'tempo': None}
 
         components = [
             disnake.ui.TextInput(
-                label="Cole URL da imagem - ou anexe foto na msg",
+                label="URL da imagem ou anexe na mensagem",
                 custom_id="url_img",
                 required=False,
                 placeholder="https://i.imgur.com/xxx.png"
@@ -215,6 +224,21 @@ class ImagemModal(disnake.ui.Modal):
 async def on_ready():
     print(f'✅ Bot online como {bot.user}')
 
+    # PRA TESTE: cola ID de vários servidores aqui
+    GUILD_IDS = [
+        1511910291825492090,  # Server 1 - teu principal
+        1509287732063637646,  # Server 2 - do amigo
+        1465329771696361546,
+        1512223172554919997# Server 3 - server teste
+    ]
+    await bot.sync_commands(guild_ids=GUILD_IDS)
+    print(f"Comandos sincronizados em {len(GUILD_IDS)} servidores")
+
+    # Registra views pra não morrer no restart
+    for guild_id, anuncios in anuncio_data.items():
+        for nome in anuncios.keys():
+            bot.add_view(PainelAnunciosView(guild_id, nome))
+            
 @bot.slash_command(description="Cria um painel de anúncio novo")
 async def criar_anuncio(inter, nome: str, canal: disnake.TextChannel):
     if not inter.author.guild_permissions.administrator:
@@ -224,7 +248,16 @@ async def criar_anuncio(inter, nome: str, canal: disnake.TextChannel):
     if inter.guild.id not in anuncio_data:
         anuncio_data[inter.guild.id] = {}
 
-    anuncio_data[inter.guild.id][nome] = {'canal': canal.id, 'cor': '2b2d31', 'task': None, 'msg_id': None, 'imagem': None}
+    anuncio_data[inter.guild.id][nome] = {
+        'canal': canal.id,
+        'cor': '2b2d31',
+        'task': None,
+        'msg_id': None,
+        'imagem': None,
+        'tempo': None,
+        'titulo': None,
+        'desc': None
+    }
 
     embed = disnake.Embed(
         title=f"📢 Painel: {nome}",
@@ -244,22 +277,14 @@ async def criar_anuncio(inter, nome: str, canal: disnake.TextChannel):
     await inter.response.send_message(embed=embed, view=view)
 
 @bot.event
-async def on_dropdown(inter):
+async def on_select_option(inter: disnake.MessageInteraction):
     custom_id = inter.component.custom_id
     if custom_id.startswith("cor_select_"):
         nome = custom_id.replace("cor_select_", "")
-        if inter.guild.id not in anuncio_data:
-            anuncio_data[inter.guild.id] = {}
-        if nome not in anuncio_data[inter.guild.id]:
-            anuncio_data[inter.guild.id][nome] = {'canal': None, 'cor': '2b2d31', 'task': None, 'msg_id': None, 'imagem': None}
         anuncio_data[inter.guild.id][nome]['cor'] = inter.values[0]
         await inter.response.send_message(f"Cor do '{nome}' definida ✅", ephemeral=True)
     elif custom_id.startswith("tempo_select_"):
         nome = custom_id.replace("tempo_select_", "")
-        if inter.guild.id not in anuncio_data:
-            anuncio_data[inter.guild.id] = {}
-        if nome not in anuncio_data[inter.guild.id]:
-            anuncio_data[inter.guild.id][nome] = {'canal': None, 'cor': '2b2d31', 'task': None, 'msg_id': None, 'imagem': None}
         anuncio_data[inter.guild.id][nome]['tempo'] = inter.values[0]
         await inter.response.send_message(f"Tempo do '{nome}' definido ✅", ephemeral=True)
 
