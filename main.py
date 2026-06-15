@@ -1,6 +1,7 @@
 import os
 import disnake
 import time
+import asyncio
 from disnake.ext import commands, tasks
 from flask import Flask
 from threading import Thread
@@ -10,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot de anúncios v4.2 - 2 Embeds ONLINE", 200
+    return "Bot de anúncios v4.3 - 2 Embeds ONLINE", 200
 
 def run_flask():
     port = int(os.environ.get('PORT', 10000))
@@ -103,7 +104,7 @@ class PainelAnunciosView(disnake.ui.View):
         embed1 = disnake.Embed(title=f"📢 {data['titulo1']}", description=data['desc1'], color=cor1)
         if data.get('imagem1'):
             embed1.set_image(url=data['imagem1'])
-        embed1.set_footer(text=f"Embed 1 | {self.nome} | v4.2", icon_url=bot.user.avatar.url)
+        embed1.set_footer(text=f"Embed 1 | {self.nome} | v4.3", icon_url=bot.user.avatar.url)
         msg1 = await canal.send(embed=embed1)
         data['msg_id1'] = msg1.id
 
@@ -111,7 +112,7 @@ class PainelAnunciosView(disnake.ui.View):
             embed2 = disnake.Embed(title=f"📢 {data['titulo2']}", description=data['desc2'], color=cor2)
             if data.get('imagem2'):
                 embed2.set_image(url=data['imagem2'])
-            embed2.set_footer(text=f"Embed 2 | {self.nome} | v4.2", icon_url=bot.user.avatar.url)
+            embed2.set_footer(text=f"Embed 2 | {self.nome} | v4.3", icon_url=bot.user.avatar.url)
             msg2 = await canal.send(embed=embed2)
             data['msg_id2'] = msg2.id
 
@@ -120,7 +121,7 @@ class PainelAnunciosView(disnake.ui.View):
     @disnake.ui.button(label="5. Ativar Auto-Renovação", style=disnake.ButtonStyle.success, emoji="🔄")
     async def ativar(self, button, inter):
         await inter.response.defer(ephemeral=True)
-        data = anuncio_data.get(self.guild.id, {}).get(self.nome)
+        data = anuncio_data.get(self.guild_id, {}).get(self.nome) # ARRUMADO: era self.guild.id
         if not data or not data.get('tempo'):
             await inter.edit_original_response(content="Escolha o tempo primeiro!")
             return
@@ -239,7 +240,7 @@ class ImagemModal(disnake.ui.Modal):
 @bot.event
 async def on_ready():
     print(f'✅ Bot online como {bot.user}')
-    print('v4.2 - 2 Embeds carregado')
+    print('v4.3 - 2 Embeds carregado')
 
     for guild_id, anuncios in anuncio_data.items():
         for nome in anuncios.keys():
@@ -261,7 +262,7 @@ async def criar_anuncio(inter, nome: str, canal: disnake.TextChannel):
     }
 
     embed = disnake.Embed(
-        title=f"📢 Painel v4.2: {nome}",
+        title=f"📢 Painel v4.3: {nome}",
         description="**1.1/1.2** Cor Embed 1 e 2\n**2.1** Preencher Embed 1\n**2.2** Preencher Embed 2\n**3** Enviar Ambos\n**4** Tempo\n**5** Ativar Renovação\n**6.1/6.2** Imagem 1 e 2",
         color=0x2b2d31
     )
@@ -279,5 +280,5 @@ if __name__ == "__main__":
     Thread(target=run_flask, daemon=True).start()
     time.sleep(2)
 
-    # Bot roda na thread principal
-    bot.run(token)
+    # Bot roda com asyncio.run - funciona no Python 3.14
+    asyncio.run(bot.start(token))
