@@ -1,5 +1,6 @@
 import os
 import disnake
+import time # <-- ADICIONA ISSO
 from disnake.ext import commands, tasks
 from flask import Flask
 from threading import Thread
@@ -15,7 +16,7 @@ def home():
 
 def run_flask():
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, threaded=True) # threaded=True ajuda
 
 # Bot
 intents = disnake.Intents.default()
@@ -184,8 +185,8 @@ class AnuncioModal(disnake.ui.Modal):
         super().__init__(title=f"Preencher: {nome}", components=components)
 
     async def callback(self, inter):
-        anuncio_data[self.guild_id][self.nome]['titulo'] = inter.text_values['titulo']
-        anuncio_data[self.guild_id][self.nome]['desc'] = inter.text_values['desc']
+        anuncio_data[self.guild.id][self.nome]['titulo'] = inter.text_values['titulo']
+        anuncio_data[self.guild.id][self.nome]['desc'] = inter.text_values['desc']
         await inter.response.send_message(f"Anúncio '{self.nome}' preenchido ✅", ephemeral=True)
 
 class ImagemModal(disnake.ui.Modal):
@@ -289,9 +290,14 @@ async def on_select_option(inter: disnake.MessageInteraction):
         anuncio_data[inter.guild.id][nome]['tempo'] = inter.values[0]
         await inter.response.send_message(f"Tempo do '{nome}' definido ✅", ephemeral=True)
 
-# FIX PRO RENDER - TROCA O BOT.RUN
+# FIX PRO RENDER WEB SERVICE
 if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 8080))
     Thread(target=run_flask, daemon=True).start()
+
+    # Dá 3 seg pro Flask bindar a porta antes do bot conectar
+    time.sleep(3)
+    print(f"Flask rodando na porta {port}")
 
     token = os.getenv("DISCORD_TOKEN")
     if not token:
