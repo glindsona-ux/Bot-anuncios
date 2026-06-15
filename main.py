@@ -14,7 +14,8 @@ def home():
     return "Bot de anúncios online v3.1"
 
 def run_flask():
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
 
 # Bot
 intents = disnake.Intents.default()
@@ -226,10 +227,10 @@ async def on_ready():
 
     # PRA TESTE: cola ID de vários servidores aqui
     GUILD_IDS = [
-        1511910291825492090,  # Server 1 - teu principal
-        1509287732063637646,  # Server 2 - do amigo
+        1511910291825492090, # Server 1 - teu principal
+        1509287732063637646, # Server 2 - do amigo
         1465329771696361546,
-        1512223172554919997# Server 3 - server teste
+        1512223172554919997 # Server 3 - server teste
     ]
     await bot.sync_commands(guild_ids=GUILD_IDS)
     print(f"Comandos sincronizados em {len(GUILD_IDS)} servidores")
@@ -238,7 +239,7 @@ async def on_ready():
     for guild_id, anuncios in anuncio_data.items():
         for nome in anuncios.keys():
             bot.add_view(PainelAnunciosView(guild_id, nome))
-            
+
 @bot.slash_command(description="Cria um painel de anúncio novo")
 async def criar_anuncio(inter, nome: str, canal: disnake.TextChannel):
     if not inter.author.guild_permissions.administrator:
@@ -288,7 +289,12 @@ async def on_select_option(inter: disnake.MessageInteraction):
         anuncio_data[inter.guild.id][nome]['tempo'] = inter.values[0]
         await inter.response.send_message(f"Tempo do '{nome}' definido ✅", ephemeral=True)
 
+# FIX PRO RENDER - TROCA O BOT.RUN
 if __name__ == "__main__":
     Thread(target=run_flask, daemon=True).start()
+
     token = os.getenv("DISCORD_TOKEN")
-    bot.run(token)
+    if not token:
+        print("ERRO: DISCORD_TOKEN não encontrado nas variáveis de ambiente!")
+    else:
+        asyncio.run(bot.start(token))
