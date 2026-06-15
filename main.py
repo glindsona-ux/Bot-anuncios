@@ -1,7 +1,6 @@
 import os
 import disnake
 import time
-import asyncio
 from disnake.ext import commands, tasks
 from flask import Flask
 from threading import Thread
@@ -11,7 +10,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot de anúncios v4.4 - 2 Embeds ONLINE", 200
+    return "Bot de anúncios v4.5 - 2 Embeds ONLINE", 200
 
 def run_flask():
     port = int(os.environ.get('PORT', 10000))
@@ -104,7 +103,7 @@ class PainelAnunciosView(disnake.ui.View):
         embed1 = disnake.Embed(title=f"📢 {data['titulo1']}", description=data['desc1'], color=cor1)
         if data.get('imagem1'):
             embed1.set_image(url=data['imagem1'])
-        embed1.set_footer(text=f"Embed 1 | {self.nome} | v4.4", icon_url=bot.user.avatar.url)
+        embed1.set_footer(text=f"Embed 1 | {self.nome} | v4.5", icon_url=bot.user.avatar.url)
         msg1 = await canal.send(embed=embed1)
         data['msg_id1'] = msg1.id
 
@@ -112,7 +111,7 @@ class PainelAnunciosView(disnake.ui.View):
             embed2 = disnake.Embed(title=f"📢 {data['titulo2']}", description=data['desc2'], color=cor2)
             if data.get('imagem2'):
                 embed2.set_image(url=data['imagem2'])
-            embed2.set_footer(text=f"Embed 2 | {self.nome} | v4.4", icon_url=bot.user.avatar.url)
+            embed2.set_footer(text=f"Embed 2 | {self.nome} | v4.5", icon_url=bot.user.avatar.url)
             msg2 = await canal.send(embed=embed2)
             data['msg_id2'] = msg2.id
 
@@ -240,7 +239,7 @@ class ImagemModal(disnake.ui.Modal):
 @bot.event
 async def on_ready():
     print(f'✅ Bot online como {bot.user}')
-    print('v4.4 - 2 Embeds carregado')
+    print('v4.5 - 2 Embeds carregado')
 
     for guild_id, anuncios in anuncio_data.items():
         for nome in anuncios.keys():
@@ -262,7 +261,7 @@ async def criar_anuncio(inter, nome: str, canal: disnake.TextChannel):
     }
 
     embed = disnake.Embed(
-        title=f"📢 Painel v4.4: {nome}",
+        title=f"📢 Painel v4.5: {nome}",
         description="**1.1/1.2** Cor Embed 1 e 2\n**2.1** Preencher Embed 1\n**2.2** Preencher Embed 2\n**3** Enviar Ambos\n**4** Tempo\n**5** Ativar Renovação\n**6.1/6.2** Imagem 1 e 2",
         color=0x2b2d31
     )
@@ -280,15 +279,5 @@ if __name__ == "__main__":
     Thread(target=run_flask, daemon=True).start()
     time.sleep(2)
 
-    # FIX DEFINITIVO PYTHON 3.14 RENDER - cria loop manual
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    print("Iniciando bot...")
-    try:
-        loop.run_until_complete(bot.start(token))
-    except KeyboardInterrupt:
-        print("Bot desligando...")
-    finally:
-        loop.run_until_complete(bot.close())
-        loop.close()
+    # Python 3.12.7 aceita bot.run normal - sem gambiarra de loop
+    bot.run(token)
