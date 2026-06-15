@@ -11,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot de anúncios v5.0 - Multi Anúncios ONLINE", 200
+    return "Bot de anúncios v5.1 - Multi Anúncios ONLINE", 200
 
 def run_flask():
     port = int(os.environ.get('PORT', 10000))
@@ -27,8 +27,23 @@ asyncio.set_event_loop(loop)
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# { guild_id: { nome: { canal, cor, titulo, desc, imagem, tempo, msg_id, task } } }
+# { guild_id: { nome: { canal, cor, titulo, desc, imagem, tempo, msg_id, task, tipo } } }
 anuncio_data = {}
+
+
+class TipoSelect(disnake.ui.Select):
+    def __init__(self, nome):
+        options = [
+            disnake.SelectOption(label="Embed", value="embed", emoji="🖼️", description="Mensagem formatada com cor e imagem"),
+            disnake.SelectOption(label="Mensagem Normal", value="normal", emoji="💬", description="Texto simples sem formatação"),
+        ]
+        super().__init__(placeholder="0. Tipo de mensagem", custom_id=f"tipo_{nome}", options=options)
+
+    async def callback(self, inter):
+        nome = self.custom_id.replace("tipo_", "")
+        anuncio_data[inter.guild.id][nome]['tipo'] = self.values[0]
+        tipo_label = "Embed 🖼️" if self.values[0] == "embed" else "Mensagem Normal 💬"
+        await inter.response.send_message(f"Tipo definido: **{tipo_label}** ✅", ephemeral=True)
 
 
 class CorSelect(disnake.ui.Select):
@@ -47,7 +62,7 @@ class CorSelect(disnake.ui.Select):
             disnake.SelectOption(label="Ciano",     value="00ffff"),
             disnake.SelectOption(label="Branco",    value="ffffff"),
         ]
-        super().__init__(placeholder="1. Cor da Embed", custom_id=f"cor_{nome}", options=options)
+        super().__init__(placeholder="1. Cor da Embed (só pra Embed)", custom_id=f"cor_{nome}", options=options)
 
     async def callback(self, inter):
         nome = self.custom_id.replace("cor_", "")
@@ -72,28 +87,63 @@ class TempoSelect(disnake.ui.Select):
         await inter.response.send_message("Tempo definido ✅", ephemeral=True)
 
 
+async def enviar_mensagem(canal, data, nome, auto=False):
+    """Envia embed ou mensagem normal conforme o tipo escolhido."""
+    tipo = data.get('tipo', 'embed')
+
+    # Apaga mensagem antiga se existir
+    if data.get('msg_id'):
+        try:
+            msg_antiga = await canal.fetch_message(data['msg_id'])
+            await msg_antiga.delete()
+        except:
+            pass
+
+    if tipo == 'normal':
+        conteudo = f"📢 **{data['titulo']}**\n\n{data['desc']}"
+        msg = await canal.send(conteudo)
+    else:
+        cor = int(data.get('cor', '2b2d31'), 16)
+        prefixo = "Auto | " if auto else ""
+        embed = disnake.Embed(title=f"📢 {data['titulo']}", description=data['desc'], color=cor)
+        if data.get('imagem'):
+            embed.set_image(url=data['imagem'])
+        embed.set_footer(text=f"{prefixo}{nome} | v5.1", icon_url=bot.user.avatar.url)
+        msg = await canal.send(embed=embed)
+
+    return msg
+
+
 class PainelView(disnake.ui.View):
     def __init__(self, guild_id, nome):
         super().__init__(timeout=None)
         self.guild_id = guild_id
         self.nome = nome
+        self.add_item(TipoSelect(nome))
         self.add_item(CorSelect(nome))
         self.add_item(TempoSelect(nome))
 
-    @disnake.ui.button(label="2. Preencher Embed", style=disnake.ButtonStyle.primary, emoji="✏️", row=2)
+    @disnake.ui.button(label="2. Preencher Conteúdo", style=disnake.ButtonStyle.primary, emoji="✏️", row=3)
     async def preencher(self, button, inter):
         await inter.response.send_modal(AnuncioModal(self.guild_id, self.nome))
 
-    @disnake.ui.button(label="4. Upar Imagem", style=disnake.ButtonStyle.secondary, emoji="🖼️", row=2)
+    @disnake.ui.button(label="4. Upar Imagem (Embed)", style=disnake.ButtonStyle.secondary, emoji="🖼️", row=3)
     async def upar_imagem(self, button, inter):
+        tipo = anuncio_data.get(self.guild_id, {}).get(self.nome, {}).get('tipo', 'embed')
+        if tipo == 'normal':
+            await inter.response.send_message("⚠️ Imagem só funciona no tipo **Embed**.", ephemeral=True)
+            return
         await inter.response.send_modal(ImagemModal(self.guild_id, self.nome))
 
-    @disnake.ui.button(label="5. Enviar Anúncio", style=disnake.ButtonStyle.success, emoji="📢", row=2)
+    @disnake.ui.button(label="5. Enviar Anúncio", style=disnake.ButtonStyle.success, emoji="📢", row=3)
     async def enviar(self, button, inter):
         await inter.response.defer(ephemeral=True)
         data = anuncio_data.get(self.guild_id, {}).get(self.nome)
         if not data or not data.get('titulo'):
-            await inter.edit_original_response(content="Preenche a embed primeiro!")
+            await inter.edit_original_response(content="Preenche o conteúdo primeiro!")
+            return
+        if not data.get('tipo'):
+            await inter.edit_original_response(content="Escolhe o tipo de mensagem primeiro (Embed ou Normal)!")
             return
 
         canal = bot.get_channel(data['canal'])
@@ -101,25 +151,12 @@ class PainelView(disnake.ui.View):
             await inter.edit_original_response(content="Canal não encontrado!")
             return
 
-        # Apaga mensagem antiga se existir
-        if data.get('msg_id'):
-            try:
-                msg_antiga = await canal.fetch_message(data['msg_id'])
-                await msg_antiga.delete()
-            except:
-                pass
-
-        cor = int(data.get('cor', '2b2d31'), 16)
-        embed = disnake.Embed(title=f"📢 {data['titulo']}", description=data['desc'], color=cor)
-        if data.get('imagem'):
-            embed.set_image(url=data['imagem'])
-        embed.set_footer(text=f"{self.nome} | v5.0", icon_url=bot.user.avatar.url)
-
-        msg = await canal.send(embed=embed)
+        msg = await enviar_mensagem(canal, data, self.nome)
         data['msg_id'] = msg.id
-        await inter.edit_original_response(content=f"Anúncio **{self.nome}** enviado ✅")
+        tipo_label = "Embed 🖼️" if data.get('tipo') == 'embed' else "Mensagem Normal 💬"
+        await inter.edit_original_response(content=f"Anúncio **{self.nome}** enviado como {tipo_label} ✅")
 
-    @disnake.ui.button(label="6. Ativar Renovação", style=disnake.ButtonStyle.success, emoji="🔄", row=3)
+    @disnake.ui.button(label="6. Ativar Renovação", style=disnake.ButtonStyle.success, emoji="🔄", row=4)
     async def ativar(self, button, inter):
         await inter.response.defer(ephemeral=True)
         data = anuncio_data.get(self.guild_id, {}).get(self.nome)
@@ -127,7 +164,10 @@ class PainelView(disnake.ui.View):
             await inter.edit_original_response(content="Escolha o tempo primeiro!")
             return
         if not data.get('titulo'):
-            await inter.edit_original_response(content="Preenche a embed primeiro!")
+            await inter.edit_original_response(content="Preenche o conteúdo primeiro!")
+            return
+        if not data.get('tipo'):
+            await inter.edit_original_response(content="Escolhe o tipo de mensagem primeiro!")
             return
 
         if data.get('task'):
@@ -144,21 +184,7 @@ class PainelView(disnake.ui.View):
             canal = bot.get_channel(d['canal'])
             if not canal:
                 return
-
-            if d.get('msg_id'):
-                try:
-                    msg_antiga = await canal.fetch_message(d['msg_id'])
-                    await msg_antiga.delete()
-                except:
-                    pass
-
-            cor = int(d.get('cor', '2b2d31'), 16)
-            embed = disnake.Embed(title=f"📢 {d['titulo']}", description=d['desc'], color=cor)
-            if d.get('imagem'):
-                embed.set_image(url=d['imagem'])
-            embed.set_footer(text=f"Auto | {nome} | v5.0", icon_url=bot.user.avatar.url)
-
-            msg = await canal.send(embed=embed)
+            msg = await enviar_mensagem(canal, d, nome, auto=True)
             d['msg_id'] = msg.id
 
         data['task'] = renovar
@@ -166,7 +192,7 @@ class PainelView(disnake.ui.View):
         horas = int(data['tempo']) / 3600
         await inter.edit_original_response(content=f"Renovação ativada a cada {horas}h ✅")
 
-    @disnake.ui.button(label="Parar Renovação", style=disnake.ButtonStyle.danger, emoji="⏹️", row=3)
+    @disnake.ui.button(label="Parar Renovação", style=disnake.ButtonStyle.danger, emoji="⏹️", row=4)
     async def parar(self, button, inter):
         data = anuncio_data.get(self.guild_id, {}).get(self.nome)
         if data and data.get('task'):
@@ -176,7 +202,7 @@ class PainelView(disnake.ui.View):
         else:
             await inter.response.send_message("Nenhuma renovação ativa", ephemeral=True)
 
-    @disnake.ui.button(label="🗑️ Apagar Anúncio", style=disnake.ButtonStyle.danger, row=3)
+    @disnake.ui.button(label="🗑️ Apagar Anúncio", style=disnake.ButtonStyle.danger, row=4)
     async def apagar(self, button, inter):
         await inter.response.send_modal(ApagarModal(self.guild_id))
 
@@ -194,7 +220,7 @@ class AnuncioModal(disnake.ui.Modal):
     async def callback(self, inter):
         anuncio_data[self.guild_id][self.nome]['titulo'] = inter.text_values['titulo']
         anuncio_data[self.guild_id][self.nome]['desc']   = inter.text_values['desc']
-        await inter.response.send_message("Embed preenchida ✅", ephemeral=True)
+        await inter.response.send_message("Conteúdo preenchido ✅", ephemeral=True)
 
 
 class ImagemModal(disnake.ui.Modal):
@@ -263,7 +289,7 @@ class ApagarModal(disnake.ui.Modal):
 @bot.event
 async def on_ready():
     print(f'✅ Bot online como {bot.user}')
-    print('v5.0 - Multi Anúncios carregado')
+    print('v5.1 - Multi Anúncios carregado')
     for guild_id, anuncios in anuncio_data.items():
         for nome in anuncios.keys():
             bot.add_view(PainelView(guild_id, nome))
@@ -287,16 +313,17 @@ async def criar_anuncio(inter, nome: str, canal: disnake.TextChannel):
     anuncio_data[inter.guild.id][nome] = {
         'canal': canal.id, 'cor': '2b2d31', 'titulo': None,
         'desc': None, 'imagem': None, 'tempo': None,
-        'msg_id': None, 'task': None
+        'msg_id': None, 'task': None, 'tipo': None
     }
 
     embed = disnake.Embed(
         title=f"📢 Anúncio: {nome}",
         description=(
-            "**1.** Escolha a cor\n"
+            "**0.** Escolha o tipo (Embed ou Mensagem Normal)\n"
+            "**1.** Escolha a cor (só pra Embed)\n"
             "**2.** Preencha o conteúdo\n"
             "**3.** Escolha o tempo de renovação\n"
-            "**4.** Upar imagem (opcional)\n"
+            "**4.** Upar imagem (só pra Embed)\n"
             "**5.** Enviar no canal\n"
             "**6.** Ativar renovação automática"
         ),
@@ -317,4 +344,3 @@ if __name__ == "__main__":
     time.sleep(2)
 
     bot.run(token)
-                  
