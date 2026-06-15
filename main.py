@@ -1,6 +1,7 @@
 import os
 import disnake
 import time
+import asyncio
 from disnake.ext import commands, tasks
 from flask import Flask
 from threading import Thread
@@ -20,6 +21,10 @@ def run_flask():
 intents = disnake.Intents.default()
 intents.message_content = True
 intents.guilds = True
+
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
 bot = commands.Bot(command_prefix='!', intents=intents, test_guilds=[1511910291825492090])
 
 anuncio_data = {}
@@ -35,7 +40,7 @@ class CorSelect(disnake.ui.Select):
             disnake.SelectOption(label="Cinza", value="808080"),
             disnake.SelectOption(label="Rosa", value="ff69b4"),
             disnake.SelectOption(label="Marrom", value="8b4513"),
-            disnake.SelectOption(label="Preto", value="000"),
+            disnake.SelectOption(label="Preto", value="000000"),
             disnake.SelectOption(label="Laranja", value="ff8c00"),
             disnake.SelectOption(label="Ciano", value="00ffff"),
             disnake.SelectOption(label="Branco", value="ffffff"),
@@ -161,7 +166,7 @@ class PainelAnunciosView(disnake.ui.View):
 
         data['task'] = renovar
         renovar.start()
-        horas = int(data['tempo'])/3600
+        horas = int(data['tempo']) / 3600
         await inter.edit_original_response(content=f"Auto-renovação ativada a cada {horas}h ✅")
 
     @disnake.ui.button(label="6.1 Upar Imagem 1", style=disnake.ButtonStyle.secondary, emoji="🖼️")
@@ -182,6 +187,59 @@ class PainelAnunciosView(disnake.ui.View):
         else:
             await inter.response.send_message("Nenhuma renovação ativa", ephemeral=True)
 
+    @disnake.ui.button(label="🗑️ Apagar Anúncio", style=disnake.ButtonStyle.danger, row=2)
+    async def apagar_anuncio(self, button, inter):
+        await inter.response.send_modal(ApagarAnuncioModal(self.guild_id))
+
+class ApagarAnuncioModal(disnake.ui.Modal):
+    def __init__(self, guild_id):
+        self.guild_id = guild_id
+        anuncios = anuncio_data.get(guild_id, {})
+        lista = ", ".join(anuncios.keys()) if anuncios else "Nenhum anúncio criado"
+        components = [
+            disnake.ui.TextInput(
+                label="Nome do anúncio para apagar",
+                custom_id="nome_apagar",
+                placeholder=f"Anúncios: {lista}",
+                max_length=100,
+                required=True
+            ),
+        ]
+        super().__init__(title="🗑️ Apagar Anúncio", components=components)
+
+    async def callback(self, inter):
+        nome = inter.text_values['nome_apagar'].strip()
+        guild_anuncios = anuncio_data.get(self.guild_id, {})
+
+        if nome not in guild_anuncios:
+            anuncios_disponiveis = ", ".join(guild_anuncios.keys()) if guild_anuncios else "nenhum"
+            await inter.response.send_message(
+                f"❌ Anúncio **{nome}** não encontrado!\nDisponíveis: `{anuncios_disponiveis}`",
+                ephemeral=True
+            )
+            return
+
+        data = guild_anuncios[nome]
+
+        # Para a renovação se estiver ativa
+        if data.get('task'):
+            data['task'].cancel()
+
+        # Apaga as mensagens do canal
+        canal = bot.get_channel(data['canal'])
+        if canal:
+            for msg_id_key in ['msg_id1', 'msg_id2']:
+                if data.get(msg_id_key):
+                    try:
+                        msg = await canal.fetch_message(data[msg_id_key])
+                        await msg.delete()
+                    except:
+                        pass
+
+        # Remove dos dados
+        del anuncio_data[self.guild_id][nome]
+        await inter.response.send_message(f"✅ Anúncio **{nome}** apagado com sucesso!", ephemeral=True)
+
 class AnuncioModal(disnake.ui.Modal):
     def __init__(self, guild_id, nome, num):
         self.guild_id = guild_id
@@ -195,7 +253,6 @@ class AnuncioModal(disnake.ui.Modal):
                 'msg_id1': None, 'msg_id2': None, 'imagem1': None, 'imagem2': None,
                 'tempo': None, 'titulo1': None, 'desc1': None, 'titulo2': None, 'desc2': None
             }
-
         components = [
             disnake.ui.TextInput(label=f"Título Embed {num}", custom_id="titulo", max_length=256, required=True),
             disnake.ui.TextInput(label=f"Descrição Embed {num}", custom_id="desc", style=disnake.TextInputStyle.paragraph, max_length=2000, required=True),
@@ -220,7 +277,6 @@ class ImagemModal(disnake.ui.Modal):
                 'msg_id1': None, 'msg_id2': None, 'imagem1': None, 'imagem2': None,
                 'tempo': None, 'titulo1': None, 'desc1': None, 'titulo2': None, 'desc2': None
             }
-
         components = [
             disnake.ui.TextInput(label=f"URL Imagem {num}", custom_id="url_img", required=False, placeholder="https://i.imgur.com/xxx.png"),
         ]
@@ -240,7 +296,6 @@ class ImagemModal(disnake.ui.Modal):
 async def on_ready():
     print(f'✅ Bot online como {bot.user}')
     print('v4.5 - 2 Embeds carregado')
-
     for guild_id, anuncios in anuncio_data.items():
         for nome in anuncios.keys():
             bot.add_view(PainelAnunciosView(guild_id, nome))
@@ -275,9 +330,8 @@ if __name__ == "__main__":
         print("ERRO: DISCORD_TOKEN não encontrado!")
         exit(1)
 
-    # Flask roda em thread separada
     Thread(target=run_flask, daemon=True).start()
     time.sleep(2)
 
-    # Python 3.12.7 aceita bot.run normal - sem gambiarra de loop
     bot.run(token)
+    
