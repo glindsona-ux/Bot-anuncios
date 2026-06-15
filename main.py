@@ -5,11 +5,9 @@ import nest_asyncio
 from disnake.ext import commands, tasks
 from flask import Flask
 from threading import Thread
-import aiohttp
 
-nest_asyncio.apply() # FIX pro loop do asyncio no Render
+nest_asyncio.apply()
 
-# Flask pra manter vivo no Render
 app = Flask('')
 
 @app.route('/')
@@ -20,60 +18,57 @@ def run_flask():
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, threaded=True)
 
-# Bot
 intents = disnake.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Guarda dados: {guild_id: {nome_anuncio: {canal, cor, titulo, desc, imagem, msg_id, task, tempo}}}
 anuncio_data = {}
 
-async def baixar_imagem(url):
-    """Baixa imagem do Discord/CDN e retorna URL pro embed"""
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            if resp.status == 200:
-                return url
-    return None
+# FIX 1: Select com callback próprio
+class CorSelect(disnake.ui.Select):
+    def __init__(self, nome):
+        options = [
+            disnake.SelectOption(label="Vermelho", value="ff0000"),
+            disnake.SelectOption(label="Verde", value="00ff00"),
+            disnake.SelectOption(label="Azul", value="0000ff"),
+            disnake.SelectOption(label="Amarelo", value="ffff00"),
+            disnake.SelectOption(label="Roxo", value="800080"),
+            disnake.SelectOption(label="Cinza", value="808080"),
+            disnake.SelectOption(label="Rosa", value="ff69b4"),
+            disnake.SelectOption(label="Marrom", value="8b4513"),
+            disnake.SelectOption(label="Preto", value="000"),
+            disnake.SelectOption(label="Laranja", value="ff8c00"),
+            disnake.SelectOption(label="Ciano", value="00ffff"),
+            disnake.SelectOption(label="Branco", value="ffffff"),
+        ]
+        super().__init__(placeholder="1. Escolha a cor do embed", custom_id=f"cor_{nome}", options=options)
+
+    async def callback(self, inter):
+        anuncio_data[inter.guild.id][self.custom_id.replace("cor_", "")]['cor'] = self.values[0]
+        await inter.response.send_message(f"Cor do '{self.custom_id.replace('cor_', '')}' definida ✅", ephemeral=True)
+
+class TempoSelect(disnake.ui.Select):
+    def __init__(self, nome):
+        options = [
+            disnake.SelectOption(label="30 minutos", value="1800"),
+            disnake.SelectOption(label="1 hora", value="3600"),
+            disnake.SelectOption(label="6 horas", value="21600"),
+            disnake.SelectOption(label="12 horas", value="43200"),
+            disnake.SelectOption(label="24 horas", value="86400"),
+        ]
+        super().__init__(placeholder="4. Auto-renovação: escolha o tempo", custom_id=f"tempo_{nome}", options=options)
+
+    async def callback(self, inter):
+        anuncio_data[inter.guild.id][self.custom_id.replace("tempo_", "")]['tempo'] = self.values[0]
+        await inter.response.send_message(f"Tempo do '{self.custom_id.replace('tempo_', '')}' definido ✅", ephemeral=True)
 
 class PainelAnunciosView(disnake.ui.View):
     def __init__(self, guild_id, nome):
         super().__init__(timeout=None)
         self.guild_id = guild_id
         self.nome = nome
-
-        # Select de cor - 12 cores
-        self.add_item(disnake.ui.Select(
-            placeholder="1. Escolha a cor do embed",
-            custom_id=f"cor_select_{nome}",
-            options=[
-                disnake.SelectOption(label="Vermelho", value="ff0000"),
-                disnake.SelectOption(label="Verde", value="00ff00"),
-                disnake.SelectOption(label="Azul", value="0000ff"),
-                disnake.SelectOption(label="Amarelo", value="ffff00"),
-                disnake.SelectOption(label="Roxo", value="800080"),
-                disnake.SelectOption(label="Cinza", value="808080"),
-                disnake.SelectOption(label="Rosa", value="ff69b4"),
-                disnake.SelectOption(label="Marrom", value="8b4513"),
-                disnake.SelectOption(label="Preto", value="000"),
-                disnake.SelectOption(label="Laranja", value="ff8c00"),
-                disnake.SelectOption(label="Ciano", value="00ffff"),
-                disnake.SelectOption(label="Branco", value="ffffff"),
-            ]
-        ))
-
-        # Select de tempo
-        self.add_item(disnake.ui.Select(
-            placeholder="4. Auto-renovação: escolha o tempo",
-            custom_id=f"tempo_select_{nome}",
-            options=[
-                disnake.SelectOption(label="30 minutos", value="1800"),
-                disnake.SelectOption(label="1 hora", value="3600"),
-                disnake.SelectOption(label="6 horas", value="21600"),
-                disnake.SelectOption(label="12 horas", value="43200"),
-                disnake.SelectOption(label="24 horas", value="86400"),
-            ]
-        ))
+        self.add_item(CorSelect(nome))
+        self.add_item(TempoSelect(nome))
 
     @disnake.ui.button(label="2. Preencher Anúncio", style=disnake.ButtonStyle.primary, emoji="🎨", custom_id="preencher")
     async def preencher(self, button, inter):
@@ -97,11 +92,7 @@ class PainelAnunciosView(disnake.ui.View):
             except:
                 pass
 
-        embed = disnake.Embed(
-            title=f"📢 {data['titulo']}",
-            description=data['desc'],
-            color=cor
-        )
+        embed = disnake.Embed(title=f"📢 {data['titulo']}", description=data['desc'], color=cor)
         if data.get('imagem'):
             embed.set_image(url=data['imagem'])
         embed.set_footer(text=f"Anúncio: {self.nome} | Bot FFZ v3.1", icon_url=bot.user.avatar.url)
@@ -120,40 +111,29 @@ class PainelAnunciosView(disnake.ui.View):
         if data.get('task'):
             data['task'].cancel()
 
-        guild_id = self.guild_id
-        nome = self.nome
-
         @tasks.loop(seconds=int(data['tempo']))
         async def renovar():
             canal = bot.get_channel(data['canal'])
             if not canal or not data.get('titulo'):
                 return
-
             cor = int(data.get('cor', '2b2d31'), 16)
-
             if data.get('msg_id'):
                 try:
                     msg_antiga = await canal.fetch_message(data['msg_id'])
                     await msg_antiga.delete()
                 except:
                     pass
-
-            embed = disnake.Embed(
-                title=f"📢 {data['titulo']}",
-                description=data['desc'],
-                color=cor
-            )
+            embed = disnake.Embed(title=f"📢 {data['titulo']}", description=data['desc'], color=cor)
             if data.get('imagem'):
                 embed.set_image(url=data['imagem'])
-            embed.set_footer(text=f"Auto-renovação | {nome} | Bot FFZ v3.1", icon_url=bot.user.avatar.url)
-
+            embed.set_footer(text=f"Auto-renovação | {self.nome} | Bot FFZ v3.1", icon_url=bot.user.avatar.url)
             msg = await canal.send(embed=embed)
             data['msg_id'] = msg.id
 
         data['task'] = renovar
         renovar.start()
         horas = int(data['tempo'])/3600
-        await inter.response.send_message(f"Auto-renovação '{nome}' ativada a cada {horas}h ✅", ephemeral=True)
+        await inter.response.send_message(f"Auto-renovação '{self.nome}' ativada a cada {horas}h ✅", ephemeral=True)
 
     @disnake.ui.button(label="6. Upar Imagem", style=disnake.ButtonStyle.secondary, emoji="🖼️", custom_id="upar_img")
     async def upar_imagem(self, button, inter):
@@ -177,7 +157,7 @@ class AnuncioModal(disnake.ui.Modal):
         if guild_id not in anuncio_data:
             anuncio_data[guild_id] = {}
         if nome not in anuncio_data[guild_id]:
-            anuncio_data[guild_id][nome] = {'canal': None, 'cor': '2b2d31', 'task': None, 'msg_id': None, 'imagem': None, 'tempo': None}
+            anuncio_data[guild_id][nome] = {'canal': None, 'cor': '2b2d31', 'task': None, 'msg_id': None, 'imagem': None, 'tempo': None, 'titulo': None, 'desc': None}
 
         components = [
             disnake.ui.TextInput(label="Título", custom_id="titulo", max_length=256, required=True),
@@ -186,7 +166,6 @@ class AnuncioModal(disnake.ui.Modal):
         super().__init__(title=f"Preencher: {nome}", components=components)
 
     async def callback(self, inter):
-        # FIX: era self.guild.id, agora self.guild_id
         anuncio_data[self.guild_id][self.nome]['titulo'] = inter.text_values['titulo']
         anuncio_data[self.guild_id][self.nome]['desc'] = inter.text_values['desc']
         await inter.response.send_message(f"Anúncio '{self.nome}' preenchido ✅", ephemeral=True)
@@ -198,43 +177,29 @@ class ImagemModal(disnake.ui.Modal):
         if guild_id not in anuncio_data:
             anuncio_data[guild_id] = {}
         if nome not in anuncio_data[guild_id]:
-            anuncio_data[guild_id][nome] = {'canal': None, 'cor': '2b2d31', 'task': None, 'msg_id': None, 'imagem': None, 'tempo': None}
+            anuncio_data[guild_id][nome] = {'canal': None, 'cor': '2b2d31', 'task': None, 'msg_id': None, 'imagem': None, 'tempo': None, 'titulo': None, 'desc': None}
 
         components = [
-            disnake.ui.TextInput(
-                label="URL da imagem ou anexe na mensagem",
-                custom_id="url_img",
-                required=False,
-                placeholder="https://i.imgur.com/xxx.png"
-            ),
+            disnake.ui.TextInput(label="URL da imagem", custom_id="url_img", required=False, placeholder="https://i.imgur.com/xxx.png"),
         ]
         super().__init__(title=f"Upar Imagem: {nome}", components=components)
 
     async def callback(self, inter):
         url = inter.text_values['url_img']
-
         if inter.message and inter.message.attachments:
             url = inter.message.attachments[0].url
-
         if not url:
-            await inter.response.send_message("Manda URL ou anexa imagem junto do modal!", ephemeral=True)
+            await inter.response.send_message("Manda URL ou anexa imagem junto!", ephemeral=True)
             return
-
         anuncio_data[self.guild_id][self.nome]['imagem'] = url
         await inter.response.send_message(f"Imagem do '{self.nome}' atualizada ✅", ephemeral=True)
 
 @bot.event
 async def on_ready():
     print(f'✅ Bot online como {bot.user}')
-
-    GUILD_IDS = [
-        1511910291825492090,
-        1509287732063637646,
-        1465329771696361546,
-        1512223172554919997
-    ]
-    await bot.sync_commands(guild_ids=GUILD_IDS)
-    print(f"Comandos sincronizados em {len(GUILD_IDS)} servidores")
+    # FIX 2: Sync global pra funcionar em qualquer server
+    await bot.sync_commands()
+    print("Comandos sincronizados globalmente")
 
     for guild_id, anuncios in anuncio_data.items():
         for nome in anuncios.keys():
@@ -250,55 +215,28 @@ async def criar_anuncio(inter, nome: str, canal: disnake.TextChannel):
         anuncio_data[inter.guild.id] = {}
 
     anuncio_data[inter.guild.id][nome] = {
-        'canal': canal.id,
-        'cor': '2b2d31',
-        'task': None,
-        'msg_id': None,
-        'imagem': None,
-        'tempo': None,
-        'titulo': None,
-        'desc': None
+        'canal': canal.id, 'cor': '2b2d31', 'task': None, 'msg_id': None,
+        'imagem': None, 'tempo': None, 'titulo': None, 'desc': None
     }
 
     embed = disnake.Embed(
         title=f"📢 Painel: {nome}",
-        description="""**1.** Escolha a cor
-**2.** Preencha o anúncio
-**3.** Envie agora
-**4.** Escolha o tempo
-**5.** Ative a renovação
-**6.** Upar imagem
-
-✨ 100% por painel | Auto-delete | Multi-anúncios""",
+        description="**1.** Escolha a cor\n**2.** Preencha o anúncio\n**3.** Envie agora\n**4.** Escolha o tempo\n**5.** Ative a renovação\n**6.** Upar imagem\n✨ 100% por painel | Auto-delete",
         color=0x2b2d31
     )
     embed.set_footer(text=f"Anúncio: {nome} | Servidor: {inter.guild.name}")
-
     view = PainelAnunciosView(inter.guild.id, nome)
     await inter.response.send_message(embed=embed, view=view)
 
-@bot.event
-async def on_select_option(inter: disnake.MessageInteraction):
-    custom_id = inter.component.custom_id
-    if custom_id.startswith("cor_select_"):
-        nome = custom_id.replace("cor_select_", "")
-        anuncio_data[inter.guild.id][nome]['cor'] = inter.values[0]
-        await inter.response.send_message(f"Cor do '{nome}' definida ✅", ephemeral=True)
-    elif custom_id.startswith("tempo_select_"):
-        nome = custom_id.replace("tempo_select_", "")
-        anuncio_data[inter.guild.id][nome]['tempo'] = inter.values[0]
-        await inter.response.send_message(f"Tempo do '{nome}' definido ✅", ephemeral=True)
+# FIX 3: Deleta on_select_option - não precisa mais
 
-# FIX PRO RENDER WEB SERVICE
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 8080))
     Thread(target=run_flask, daemon=True).start()
-
     time.sleep(3)
     print(f"Flask rodando na porta {port}")
-
     token = os.getenv("DISCORD_TOKEN")
     if not token:
-        print("ERRO: DISCORD_TOKEN não encontrado nas variáveis de ambiente!")
+        print("ERRO: DISCORD_TOKEN não encontrado!")
     else:
-        bot.run(token) # FIX: usa run() em vez de asyncio.run()
+        bot.run(token)
