@@ -77,15 +77,15 @@ class PainelAnunciosView(disnake.ui.View):
         self.add_item(CorSelect(nome, "2"))
         self.add_item(TempoSelect(nome))
 
-    @disnake.ui.button(label="2.1 Preencher Embed 1", style=disnake.ButtonStyle.primary, emoji="1️⃣")
+    @disnake.ui.button(label="2.1 Preencher Embed 1", style=disnake.ButtonStyle.primary, emoji="1️⃣", row=3)
     async def preencher1(self, button, inter):
         await inter.response.send_modal(AnuncioModal(self.guild_id, self.nome, "1"))
 
-    @disnake.ui.button(label="2.2 Preencher Embed 2", style=disnake.ButtonStyle.primary, emoji="2️⃣")
+    @disnake.ui.button(label="2.2 Preencher Embed 2", style=disnake.ButtonStyle.primary, emoji="2️⃣", row=3)
     async def preencher2(self, button, inter):
         await inter.response.send_modal(AnuncioModal(self.guild_id, self.nome, "2"))
 
-    @disnake.ui.button(label="3. Enviar Ambos", style=disnake.ButtonStyle.success, emoji="📢")
+    @disnake.ui.button(label="3. Enviar Ambos", style=disnake.ButtonStyle.success, emoji="📢", row=3)
     async def enviar(self, button, inter):
         await inter.response.defer(ephemeral=True)
         data = anuncio_data.get(self.guild_id, {}).get(self.nome)
@@ -122,7 +122,7 @@ class PainelAnunciosView(disnake.ui.View):
 
         await inter.edit_original_response(content=f"Ambos anúncios '{self.nome}' enviados ✅")
 
-    @disnake.ui.button(label="5. Ativar Auto-Renovação", style=disnake.ButtonStyle.success, emoji="🔄")
+    @disnake.ui.button(label="5. Ativar Auto-Renovação", style=disnake.ButtonStyle.success, emoji="🔄", row=3)
     async def ativar(self, button, inter):
         await inter.response.defer(ephemeral=True)
         data = anuncio_data.get(self.guild_id, {}).get(self.nome)
@@ -169,15 +169,15 @@ class PainelAnunciosView(disnake.ui.View):
         horas = int(data['tempo']) / 3600
         await inter.edit_original_response(content=f"Auto-renovação ativada a cada {horas}h ✅")
 
-    @disnake.ui.button(label="6.1 Upar Imagem 1", style=disnake.ButtonStyle.secondary, emoji="🖼️")
+    @disnake.ui.button(label="6.1 Upar Imagem 1", style=disnake.ButtonStyle.secondary, emoji="🖼️", row=4)
     async def upar_imagem1(self, button, inter):
         await inter.response.send_modal(ImagemModal(self.guild_id, self.nome, "1"))
 
-    @disnake.ui.button(label="6.2 Upar Imagem 2", style=disnake.ButtonStyle.secondary, emoji="🖼️")
+    @disnake.ui.button(label="6.2 Upar Imagem 2", style=disnake.ButtonStyle.secondary, emoji="🖼️", row=4)
     async def upar_imagem2(self, button, inter):
         await inter.response.send_modal(ImagemModal(self.guild_id, self.nome, "2"))
 
-    @disnake.ui.button(label="Parar Auto-Renovação", style=disnake.ButtonStyle.danger, emoji="⏹️", row=2)
+    @disnake.ui.button(label="Parar Auto-Renovação", style=disnake.ButtonStyle.danger, emoji="⏹️", row=4)
     async def parar(self, button, inter):
         data = anuncio_data.get(self.guild_id, {}).get(self.nome)
         if data and data.get('task'):
@@ -187,7 +187,7 @@ class PainelAnunciosView(disnake.ui.View):
         else:
             await inter.response.send_message("Nenhuma renovação ativa", ephemeral=True)
 
-    @disnake.ui.button(label="🗑️ Apagar Anúncio", style=disnake.ButtonStyle.danger, row=2)
+    @disnake.ui.button(label="🗑️ Apagar Anúncio", style=disnake.ButtonStyle.danger, row=4)
     async def apagar_anuncio(self, button, inter):
         await inter.response.send_modal(ApagarAnuncioModal(self.guild_id))
 
@@ -306,6 +306,9 @@ async def criar_anuncio(inter, nome: str, canal: disnake.TextChannel):
         await inter.response.send_message("Só admin pode usar", ephemeral=True)
         return
 
+    # Defer imediato pra evitar timeout de 3s do Discord
+    await inter.response.defer(ephemeral=False)
+
     if inter.guild.id not in anuncio_data:
         anuncio_data[inter.guild.id] = {}
 
@@ -322,7 +325,7 @@ async def criar_anuncio(inter, nome: str, canal: disnake.TextChannel):
     )
     embed.set_footer(text=f"Anúncio: {nome}")
     view = PainelAnunciosView(inter.guild.id, nome)
-    await inter.response.send_message(embed=embed, view=view)
+    await inter.edit_original_response(embed=embed, view=view)
 
 if __name__ == "__main__":
     token = os.getenv("DISCORD_TOKEN")
@@ -334,4 +337,4 @@ if __name__ == "__main__":
     time.sleep(2)
 
     bot.run(token)
-    
+                       
