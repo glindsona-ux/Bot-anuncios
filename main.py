@@ -5,6 +5,7 @@ import nest_asyncio
 from disnake.ext import commands, tasks
 from flask import Flask
 from threading import Thread
+from waitress import serve
 
 nest_asyncio.apply()
 
@@ -12,11 +13,12 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot de anúncios v4.0 - 2 Embeds"
+    return "Bot de anúncios v4.1 - 2 Embeds ONLINE"
 
 def run_flask():
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port, threaded=True)
+    port = int(os.environ.get('PORT', 10000))
+    print(f"Flask iniciando na porta {port}")
+    serve(app, host='0.0.0.0', port=port, threads=6)
 
 intents = disnake.Intents.default()
 intents.message_content = True
@@ -93,7 +95,6 @@ class PainelAnunciosView(disnake.ui.View):
         cor1 = int(data.get('cor1', '2b2d31'), 16)
         cor2 = int(data.get('cor2', '2b2d31'), 16)
 
-        # Apaga msgs antigas
         for msg_id_key in ['msg_id1', 'msg_id2']:
             if data.get(msg_id_key):
                 try:
@@ -102,20 +103,18 @@ class PainelAnunciosView(disnake.ui.View):
                 except:
                     pass
 
-        # Embed 1
         embed1 = disnake.Embed(title=f"📢 {data['titulo1']}", description=data['desc1'], color=cor1)
         if data.get('imagem1'):
             embed1.set_image(url=data['imagem1'])
-        embed1.set_footer(text=f"Embed 1 | {self.nome} | v4.0", icon_url=bot.user.avatar.url)
+        embed1.set_footer(text=f"Embed 1 | {self.nome} | v4.1", icon_url=bot.user.avatar.url)
         msg1 = await canal.send(embed=embed1)
         data['msg_id1'] = msg1.id
 
-        # Embed 2
         if data.get('titulo2'):
             embed2 = disnake.Embed(title=f"📢 {data['titulo2']}", description=data['desc2'], color=cor2)
             if data.get('imagem2'):
                 embed2.set_image(url=data['imagem2'])
-            embed2.set_footer(text=f"Embed 2 | {self.nome} | v4.0", icon_url=bot.user.avatar.url)
+            embed2.set_footer(text=f"Embed 2 | {self.nome} | v4.1", icon_url=bot.user.avatar.url)
             msg2 = await canal.send(embed=embed2)
             data['msg_id2'] = msg2.id
 
@@ -140,7 +139,6 @@ class PainelAnunciosView(disnake.ui.View):
             cor1 = int(data.get('cor1', '2b2d31'), 16)
             cor2 = int(data.get('cor2', '2b2d31'), 16)
 
-            # Apaga antigas
             for msg_id_key in ['msg_id1', 'msg_id2']:
                 if data.get(msg_id_key):
                     try:
@@ -149,7 +147,6 @@ class PainelAnunciosView(disnake.ui.View):
                     except:
                         pass
 
-            # Envia embed 1
             embed1 = disnake.Embed(title=f"📢 {data['titulo1']}", description=data['desc1'], color=cor1)
             if data.get('imagem1'):
                 embed1.set_image(url=data['imagem1'])
@@ -157,7 +154,6 @@ class PainelAnunciosView(disnake.ui.View):
             msg1 = await canal.send(embed=embed1)
             data['msg_id1'] = msg1.id
 
-            # Envia embed 2
             if data.get('titulo2'):
                 embed2 = disnake.Embed(title=f"📢 {data['titulo2']}", description=data['desc2'], color=cor2)
                 if data.get('imagem2'):
@@ -246,7 +242,7 @@ class ImagemModal(disnake.ui.Modal):
 @bot.event
 async def on_ready():
     print(f'✅ Bot online como {bot.user}')
-    print('v4.0 - 2 Embeds carregado')
+    print('v4.1 - 2 Embeds carregado')
 
     for guild_id, anuncios in anuncio_data.items():
         for nome in anuncios.keys():
@@ -268,7 +264,7 @@ async def criar_anuncio(inter, nome: str, canal: disnake.TextChannel):
     }
 
     embed = disnake.Embed(
-        title=f"📢 Painel v4: {nome}",
+        title=f"📢 Painel v4.1: {nome}",
         description="**1.1/1.2** Cor Embed 1 e 2\n**2.1** Preencher Embed 1\n**2.2** Preencher Embed 2\n**3** Enviar Ambos\n**4** Tempo\n**5** Ativar Renovação\n**6.1/6.2** Imagem 1 e 2",
         color=0x2b2d31
     )
@@ -277,12 +273,10 @@ async def criar_anuncio(inter, nome: str, canal: disnake.TextChannel):
     await inter.response.send_message(embed=embed, view=view)
 
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 8080))
     Thread(target=run_flask, daemon=True).start()
-    time.sleep(3)
-    print(f"Flask rodando na porta {port}")
+    time.sleep(2)
     token = os.getenv("DISCORD_TOKEN")
     if not token:
         print("ERRO: DISCORD_TOKEN não encontrado!")
-    else:
-        bot.run(token)
+        exit(1)
+    bot.run(token)
