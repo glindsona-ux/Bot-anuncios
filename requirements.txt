@@ -1,6 +1,7 @@
 disnake==2.9.2
-flask==3.0.0
+flask==3.0.3
 aiohttp==3.9.5
 nest_asyncio==1.6.0
 audioop-lts==0.2.1
 python-dotenv==1.0.0
+waitress==3.0.2
